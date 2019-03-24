@@ -5,9 +5,7 @@ import numpy as np
 from multiprocessing import Pool
 
 import os
-file_path = "D:/test/test.py"
-(filepath,tempfilename) = os.path.split(file_path)
-(filename,extension) = os.path.splitext(tempfilename)
+
 def show_sheet_name(file):
 
     xl =  pd.ExcelFile(file)
@@ -16,58 +14,65 @@ def show_sheet_name(file):
     return all_sheet
 
 
-def jion_sheets(file,chose_type,filename,TO,indexs):
-    print('_' * 20, indexs)
+def jion_sheets(file,chose_type,filename,TO,AXIS,indexs):
+    """
+
+    :param file: 需要合并的文件
+    :param chose_type: 合并的类型
+    :param filename: 原始文件名 eg：ls.xlsx -- ls
+    :param TO: 合并方向
+    :param indexs: 取决于TO参数，左右合并需要指名合并轴
+    :return:
+    """
+
     datas = pd.DataFrame()
     sheet_names = show_sheet_name(file)
-    for sheet_name in sheet_names:
-        print('即将处理%s'%sheet_name)
+    for i,sheet_name in enumerate(sheet_names):
+        # print('即将处理%s'%sheet_name)
         try:
-            df = pd.read_excel(file,sheet_name=sheet_name,header=1)
-
-            df['from'] = filename+sheet_name
+            df = pd.read_excel(file,sheet_name=sheet_name,header=0)
+            df['from'] = filename+"_"+sheet_name
         except:
             pass
-        if TO == 0:
-            datas = pd.concat([datas, df], axis=0, join=chose_type, ignore_index=True,sort=True)
-        elif TO == 1:
-            datas = pd.merge(datas, df, on=indexs, how=chose_type)
-        print('正在处理%s'%file)
+        if AXIS == 0:
+            datas = pd.concat([datas, df], axis=AXIS, join=chose_type, ignore_index=True,sort=True)
+        elif AXIS == 1:
+            print(chose_type)
+            datas = datas.append(df)
+
+
+
     return datas
 
 
-def main(files,chose_type,TO,indexs):
+def main(files,chose_type,TO,AXIS,indexs):
+    """
+
+    :param files: 目标文件
+    :param chose_type: 合并类型
+    :param TO: 合并方向
+    :param indexs: 索引列
+    :return:
+    """
     print('Parent process %s.' % os.getpid())
     t1 = time.clock()
-
-    all_data  = pd.DataFrame()
-    # files = [r'C:\Users\Administrator\Desktop\cy\excs\1.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\2.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\3.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\4.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\5.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\6.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\7.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\8.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\9.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\10.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\11.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\12.xlsx',
-    #          r'C:\Users\Administrator\Desktop\cy\excs\13.xlsx',
-    #          ]
+    all_data  =pd.DataFrame()
     p = Pool(4)
-
     for file in files:
         (filepath, tempfilename) = os.path.split(file)
         (filename, extension) = os.path.splitext(tempfilename)
-        print(filename)
-        if TO == 0:
-            res = p.apply_async(jion_sheets, args=(file,chose_type,filename,TO,indexs))
-            all_data = pd.concat([all_data, res.get()], axis=0, join=chose_type, ignore_index=True,sort=True)
-        elif TO == 1:
-            #jion_sheets(file, chose_type, filename, TO, indexs):
-            res = p.apply_async(jion_sheets, args=(file, chose_type, filename,TO,indexs))
-            pd.concat(all_data, res.get(), )
+
+        if AXIS == 0:
+            res = p.apply_async(jion_sheets, args=(file,chose_type,filename,TO,AXIS,indexs))
+            all_data = pd.concat([all_data, res.get()], axis=AXIS, join=chose_type, ignore_index=True,sort=True)
+
+        elif AXIS == 1:
+            print('这是TO')
+            res = p.apply_async(jion_sheets, args=(file, chose_type, filename,TO,AXIS,indexs))
+            all_data = all_data.append(res.get())
+            # all_data =pd.concat(all_data,axis=0, join=chose_type, ignore_index=True, sort=True )
+
+
 
     p.close()
     p.join()
@@ -78,20 +83,33 @@ def main(files,chose_type,TO,indexs):
         all_data.set_index('from',inplace=True)
     except:
         pass
-    all_data.to_excel('./res.xlsx')
-
+    all_data.to_excel('./%s_%s_result.xlsx'%(chose_type,str(len(files))))
+    print(all_data)
     print("用时{}s".format(ts))
     print('All subprocesses done.')
+    return 1
 
-def jion_left_right(left_files,right_files,indexs,chose_type):
-    df_left = pd.read_excel(left_files)
-    df_right = pd.read_excel(right_files)
-    result = pd.merge(df_left, df_right, on=indexs, how=chose_type)
+def jion_left_right(left_files,right_files,indexs,chose_type,header):
+    try:
+        df_left = pd.read_excel(left_files[0],header=header)
+        df_right = pd.read_excel(right_files[0],header=header)
+        result = pd.merge(df_left, df_right, on=indexs, how=chose_type)
+        result.to_excel('./%s.xlsx'%chose_type)
+        print('合并完成')
+    except:
+        print('未知错粗')
+        pass
 
-def cols_name(file):
-    df = pd.read_excel(file,header=0)
-    cols = df.columns.tolist()
-    return cols
+
+def cols_name(file,nums):
+    try:
+        df = pd.read_excel(file,header=nums,nrows=5)
+        cols = df.columns.tolist()
+        return cols
+    except:
+        pass
+
+
 
 
 
